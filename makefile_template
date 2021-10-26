@@ -1,0 +1,34 @@
+CLEAN_TARGETS := $(foreach trg, $(TARGETS), $(addprefix $(trg),-clean))
+INSTALL_TARGETS := $(foreach trg, $(TARGETS), $(addprefix $(trg),-install))
+UNINSTALL_TARGETS := $(foreach trg, $(TARGETS), $(addprefix $(trg),-uninstall))
+REINSTALL_TARGETS := $(foreach trg, $(TARGETS), $(addprefix $(trg),-reinstall))
+
+PHONY_TARGETS := $(TARGETS) $(INSTALL_TARGETS) $(UNINSTALL_TARGETS) $(REINSTALL_TARGETS) 
+PHONY_TARGETS += all all-clean all-install all-uninstall all-reinstall
+
+.PHONY: $(PHONY_TARGETS)
+
+all: $(TARGETS)
+
+all-clean: $(CLEAN_TARGETS)
+
+all-install: $(INSTALL_TARGETS)
+
+all-uninstall: $(UNINSTALL_TARGETS)
+
+all-reinstall: $(REINSTALL_TARGETS)
+
+$(TARGETS):
+	$(MAKE) -C $@
+
+$(CLEAN_TARGETS): %-clean:
+	$(MAKE) -C $* clean
+
+$(INSTALL_TARGETS): %-install:
+	$(MAKE) -C $* install
+
+$(UNINSTALL_TARGETS): %-uninstall:
+	$(MAKE) -C $* uninstall
+
+$(REINSTALL_TARGETS): %-reinstall:
+	$(MAKE) -C $* reinstall
