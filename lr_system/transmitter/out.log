@@ -1,7 +1,7 @@
-[2021-10-25 19:53:05.42060][INFO][BasicServer::Logger] Registered logger
-[2021-10-25 19:53:05.42077][DEBUG][BasicServer::BasicServer] Initialized socket with descriptor: 4
-[2021-10-25 19:53:05.42081][DEBUG][BasicServer::BasicServer] Successfully set socket options
-[2021-10-25 19:53:05.42085][DEBUG][BasicServer::BasicServer] Bound address to socket (port: 1337)
-[2021-10-25 19:53:05.42089][DEBUG][BasicServer::BasicServer] Marked socket with descriptor 4 for listen
-[2021-10-25 19:53:05.42091][INFO][BasicServer::BasicServer] Server initialization successful, listening on port 1337
-[2021-10-25 19:53:05.42093][INFO][BasicServer::awaitConnection] Awaiting connection from client...
+[2021-10-26 18:28:24.88570][INFO][BasicServer::Logger] Registered logger
+[2021-10-26 18:28:24.88579][DEBUG][BasicServer::BasicServer] Initialized socket with descriptor: 4
+[2021-10-26 18:28:24.88582][DEBUG][BasicServer::BasicServer] Successfully set socket options
+[2021-10-26 18:28:24.88585][DEBUG][BasicServer::BasicServer] Bound address to socket (port: 1337)
+[2021-10-26 18:28:24.88587][DEBUG][BasicServer::BasicServer] Marked socket with descriptor 4 for listen
+[2021-10-26 18:28:24.88589][INFO][BasicServer::BasicServer] Server initialization successful, listening on port 1337
+[2021-10-26 18:28:24.88591][INFO][BasicServer::awaitConnection] Awaiting connection from client...
