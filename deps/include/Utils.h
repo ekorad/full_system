@@ -3,6 +3,7 @@
 
 #include <string>
 #include <optional>
+#include <netinet/in.h>
 
 class Utils
 {
@@ -14,6 +15,7 @@ public:
     Utils& operator=(Utils&&) = delete;
 
     static std::optional<std::string> demangleTypeName(const std::string& mangledName);
+    static std::optional<std::string> convertIPAddressToString(const in_addr& addr);
 };
 
 #endif

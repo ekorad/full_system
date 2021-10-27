@@ -1,8 +1,8 @@
 #ifndef BASIC_SERVER_H
 #define BASIC_SERVER_H
 
+#include "DefaultLoggable.h"
 #include <fstream>
-#include <log/DefaultLoggable.h>
 #include <netinet/in.h>
 
 class BasicServer : public DefaultLoggable<BasicServer>
@@ -12,18 +12,20 @@ public:
     ~BasicServer();
 
     void awaitConnection();
+    void close();
+    void disconnectClient();
 
-    int getPortNumber() const noexcept { return _port; }
-    void setPortNumber(const int port) noexcept { _port = port; } 
-    void resetPortNumber() noexcept { setPortNumber(defaultPort); }
 private:
     static constexpr int defaultPort = 1337;
 
+    bool closeServerSocket();
+    bool disconnect();
+
     sockaddr_in _addrServer;
     sockaddr_in _addrClient;
-    int _fdServerSock;
-    int _fdClientSock;
-    int _port;
+    int _fdServerSock = -1;
+    int _fdClientSock = -1;
+    int _port = defaultPort;
 };
 
 #endif

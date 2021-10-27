@@ -1,6 +1,6 @@
 #include <iostream>
 #include <fstream>
-#include <server/BasicServer.h>
+#include "BasicServer.h"
 
 using namespace std;
 
@@ -8,8 +8,9 @@ int main()
 {
     try
     {
-        BasicServer sv;
-        sv.awaitConnection();
+        BasicServer server;
+        // server.awaitConnection();
+        cout << "t";
     }
     catch(const std::exception& e)
     {

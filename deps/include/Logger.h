@@ -1,4 +1,5 @@
 #include "ContextLogMessage.h"
+#include "Utils.h"
 #include "ILogger.h"
 #include <ostream>
 #include <fstream>
@@ -6,7 +7,7 @@
 #include <atomic>
 #include <typeinfo>
 #include <iostream>
-#include <utils/Utils.h>
+#include <memory>
 #include <cxxabi.h>
 #include <stdlib.h>
 
@@ -21,10 +22,8 @@ using std::mutex;
 using std::lock_guard;
 using std::cerr;
 using std::vector;
-using std::shared_ptr;
 using std::optional;
 using std::nullopt;
-using std::unique_ptr;
 using std::make_unique;
 
 struct NonContext_t final {};

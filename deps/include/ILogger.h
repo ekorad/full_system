@@ -4,7 +4,6 @@
 #include "ContextLogMessage.h"
 #include <vector>
 #include <mutex>
-#include <memory>
 #include <optional>
 
 class ILogger
@@ -24,7 +23,7 @@ public:
     static void allLoggersSetMinimumLogLevel(const LogLevel level);
 
 private:
-    static std::vector<std::shared_ptr<ILogger>> loggers;
+    static std::vector<ILogger*> loggers;
     static std::mutex loggersMutex;
 };
 
