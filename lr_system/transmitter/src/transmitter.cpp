@@ -9,8 +9,7 @@ int main()
     try
     {
         BasicServer server;
-        // server.awaitConnection();
-        cout << "t";
+        server.host();
     }
     catch(const std::exception& e)
     {

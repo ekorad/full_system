@@ -8,24 +8,23 @@
 class BasicServer : public DefaultLoggable<BasicServer>
 {
 public:
-    BasicServer(const int port = defaultPort);
+    BasicServer();
     ~BasicServer();
 
-    void awaitConnection();
+    void host(const unsigned port = defaultPort);
     void close();
     void disconnectClient();
 
 private:
-    static constexpr int defaultPort = 1337;
+    static constexpr unsigned defaultPort = 1337;
+    static const std::string defaultLogFileName;
 
     bool closeServerSocket();
     bool disconnect();
 
-    sockaddr_in _addrServer;
     sockaddr_in _addrClient;
     int _fdServerSock = -1;
     int _fdClientSock = -1;
-    int _port = defaultPort;
 };
 
 #endif

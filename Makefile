@@ -5,9 +5,11 @@ RX_ARTIFACT_NAME := receiver
 TARGETS := $(TX_ARTIFACT_NAME) $(RX_ARTIFACT_NAME)
 TARGETS_CLEAN := $(addsuffix -clean,$(TARGETS))
 
-.PHONY: $(TX_ARTIFACT_NAME)
+.PHONY: all clean remake $(TX_ARTIFACT_NAME)
 
 all: $(TX_ARTIFACT_NAME) $(RX_ARTIFACT_NAME)
+
+remake: clean all
 
 $(TARGETS):
 	$(MAKE) -C $(BASE_LRSYS_DIR)/$@

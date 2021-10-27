@@ -10,7 +10,8 @@ using std::system_category;
 using std::runtime_error;
 using std::to_string;
 
-BasicServer::BasicServer(const int port)
+BasicServer::BasicServer()
+    : DefaultLoggable(defaultLogFileName)
 {
     _fdServerSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
@@ -42,11 +43,26 @@ BasicServer::BasicServer(const int port)
         logger().log("Successfully set socket options", GENERATE_CONTEXT(), LogLevel::DEBUG);
     }
 
-    _addrServer.sin_family = AF_INET;
-    _addrServer.sin_addr.s_addr = INADDR_ANY;
-    _addrServer.sin_port = htons(port);
+    logger().log("Server initialization successful", GENERATE_CONTEXT());
+}
 
-    if (bind(_fdServerSock, (struct sockaddr *)&_addrServer, sizeof(_addrServer)) == -1)
+BasicServer::~BasicServer()
+{
+    disconnect();
+    closeServerSocket();
+
+    logger().log("Server terminated", GENERATE_CONTEXT());
+}
+
+void BasicServer::host(const unsigned port)
+{
+    sockaddr_in addrServer;
+
+    addrServer.sin_family = AF_INET;
+    addrServer.sin_addr.s_addr = INADDR_ANY;
+    addrServer.sin_port = htons(port);
+
+    if (bind(_fdServerSock, (struct sockaddr *)&addrServer, sizeof(addrServer)) == -1)
     {
         const auto error = system_error(errno, system_category(), "Could not bind address to socket");
         logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
@@ -72,17 +88,6 @@ BasicServer::BasicServer(const int port)
         logger().log("Marked server socket for listen", GENERATE_CONTEXT(), LogLevel::DEBUG);
     }
 
-    logger().log("Server initialization successful", GENERATE_CONTEXT());
-}
-
-BasicServer::~BasicServer()
-{
-    disconnect();
-    closeServerSocket();
-}
-
-void BasicServer::awaitConnection()
-{
     socklen_t clientAddrLen = sizeof(sockaddr_in);
 
     logger().log("Awaiting connection from client...", GENERATE_CONTEXT());
@@ -106,7 +111,8 @@ void BasicServer::awaitConnection()
         ipAddrStr = ipAddrStrOpt.value();
     }
 
-    logger().log("Client with IP address " + ipAddrStr + " connected successfully",
+    logger().log("Client with IP address " + ipAddrStr + " connected successfully "
+        "(descriptor = " + to_string(_fdClientSock) + ")",
         GENERATE_CONTEXT());
 }
 
@@ -116,7 +122,7 @@ void BasicServer::close()
 
     if (closeServerSocket() == false)
     {
-        logger().log("Server already closed", GENERATE_CONTEXT());
+        logger().log("Server already clossed", GENERATE_CONTEXT());
     }
 }
 
@@ -127,6 +133,8 @@ void BasicServer::disconnectClient()
         logger().log("No client connected", GENERATE_CONTEXT());
     }
 }
+
+const string BasicServer::defaultLogFileName = "transmitter.log";
 
 bool BasicServer::closeServerSocket()
 {

@@ -20,19 +20,20 @@ optional<string> Utils::demangleTypeName(const string& mangledName)
 
     return nullopt;
 }
-
+#include <iostream>
 optional<string> Utils::convertIPAddressToString(const in_addr& addr)
 {
     char ipAddr[INET_ADDRSTRLEN];
-    string ipAddrStr;
     const char* retVal = inet_ntop(AF_INET, &(addr), ipAddr, INET_ADDRSTRLEN);
 
     if (retVal == nullptr)
     {
+        std::cout << "CONVERT FAIL" << std::endl;
         return nullopt;
     }
     else
     {
-        return ipAddrStr;
+        string optVal = ipAddr;
+        return optVal;
     }
 }
