@@ -5,14 +5,13 @@
 
 using namespace std;
 
-
-
 int main()
 {
     try
     {
         BasicClient client;
         client.connect();
+        while(true);
     }
     catch(const std::exception& e)
     {

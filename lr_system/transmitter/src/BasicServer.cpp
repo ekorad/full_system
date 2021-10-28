@@ -9,6 +9,12 @@ using std::system_error;
 using std::system_category;
 using std::runtime_error;
 using std::to_string;
+using std::thread;
+using std::unique_lock;
+using std::defer_lock;
+using std::mutex;
+using std::queue;
+using std::swap;
 
 BasicServer::BasicServer()
     : DefaultLoggable(defaultLogFileName)
@@ -114,6 +120,44 @@ void BasicServer::host(const unsigned port)
     logger().log("Client with IP address " + ipAddrStr + " connected successfully "
         "(descriptor = " + to_string(_fdClientSock) + ")",
         GENERATE_CONTEXT());
+
+    try
+    {
+        _senderThread = thread{ &BasicServer::senderThreadFunc, this };
+    }
+    catch(const system_error& error)
+    {
+        const string& errMsg = "Could not start sender thread";
+        const auto thrownError = system_error(error.code().value(), system_category(), errMsg);
+        logger().log(errMsg, GENERATE_CONTEXT(), LogLevel::ERROR);
+        disconnectClient();
+        throw thrownError;
+    }
+
+    constexpr int threadStartMillisTmo = 500;
+    constexpr int threadStartWaitMillis = 100;
+    int threadStartElapsedMilis = 0;
+    unique_lock<mutex> lock{ _mutex };
+
+    logger().log("Waiting for sender thread to confirm status...",
+        GENERATE_CONTEXT(), LogLevel::DEBUG);
+    while (_condVar.wait_for(lock, std::chrono::milliseconds(threadStartElapsedMilis),
+        [&]
+        {
+            return static_cast<bool>(_threadStarted);
+        }) == false)
+    {
+        threadStartElapsedMilis += threadStartWaitMillis;
+        if (threadStartElapsedMilis == threadStartMillisTmo)
+        {
+            const auto error = runtime_error("Could not start sender thread in time");
+            logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
+            disconnectClient();
+            throw error;
+        }
+    }
+
+    logger().log("Sender thread confirmed status", GENERATE_CONTEXT(), LogLevel::DEBUG);
 }
 
 void BasicServer::close()
@@ -132,6 +176,38 @@ void BasicServer::disconnectClient()
     {
         logger().log("No client connected", GENERATE_CONTEXT());
     }
+}
+
+void BasicServer::send(const string& message)
+{
+    unique_lock<mutex> lock{ _mutex };
+
+    _msgQueue.push(message);
+
+    if (!_notified)
+    {
+        _notified = true;
+        logger().log("Notifying sender thread, current message batch size is: "
+            + to_string(_msgQueue.size()), GENERATE_CONTEXT(), LogLevel::DEBUG);
+        lock.unlock();
+        _condVar.notify_one();
+    }
+}
+
+void BasicServer::endCommunication(const bool force)
+{
+    if (force)
+    {
+        _forceEnd = true;
+        logger().log("Forcefully ending communications...", GENERATE_CONTEXT());
+    }
+    else
+    {
+        _forceEnd = false;
+        logger().log("Gracefully ending communications...", GENERATE_CONTEXT());
+    }
+
+    _endComms = true;
 }
 
 const string BasicServer::defaultLogFileName = "transmitter.log";
@@ -182,4 +258,58 @@ bool BasicServer::disconnect()
     }
 
     return false;
+}
+
+void BasicServer::senderThreadFunc()
+{
+    static size_t totalSent = 0;
+
+    logger().log("Sender thread started", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    _threadStarted = true;
+    _condVar.notify_one();
+
+    while (true)
+    {
+        logger().log("Waiting for notification...", GENERATE_CONTEXT(), LogLevel::DEBUG);
+        unique_lock<mutex> lock{ _mutex };
+        while (_condVar.wait_for(lock, std::chrono::milliseconds(100),
+            [&]
+            {
+                return _notified;
+            }) == false);
+        logger().log("Woken up, sending message batch...", GENERATE_CONTEXT(), LogLevel::DEBUG);
+
+        if (_endComms && _forceEnd)
+        {
+            logger().log("Communications ended forcefully", GENERATE_CONTEXT(),
+                LogLevel::DEBUG);
+            lock.unlock();
+            break;
+        }
+
+        _notified = false;
+        queue<string> sendQueue;
+        swap(_msgQueue, sendQueue);
+        lock.unlock();
+        const auto batchSize = sendQueue.size();
+        totalSent += batchSize;
+
+        while (!sendQueue.empty())
+        {
+            std::cout << sendQueue.front() << std::endl;
+            sendQueue.pop();
+        }
+        logger().log("Sent message batch of size: " + to_string(batchSize)
+            + " (total sent = " + to_string(totalSent) + ")", GENERATE_CONTEXT(),
+            LogLevel::DEBUG);
+
+        if (_endComms)
+        {
+            logger().log("Communications ended gracefully", GENERATE_CONTEXT(),
+                LogLevel::DEBUG);
+            break;
+        }
+    }
+
+    logger().log("Sender thread stopped", GENERATE_CONTEXT(), LogLevel::DEBUG);
 }
