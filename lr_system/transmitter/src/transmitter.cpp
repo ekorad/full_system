@@ -1,5 +1,6 @@
 #include <iostream>
 #include "BasicServer.h"
+#include "CustomDataMessage.h"
 
 using namespace std;
 
@@ -10,18 +11,20 @@ int main()
         BasicServer server;
         server.host();
 
-        /*for (int i = 0; i < 10000; i++)
+        for (int i = 0; i < 10000; i++)
         {
-            server.send("Message " + to_string(i + 1));
+            server.send(CustomDataMessage{i + 1, i + 2, i + 3});
         }
 
-        this_thread::sleep_for(std::chrono::seconds(1));
-        server.send("last msg");*/
+        // for (int i = 0; i < 10000; i++)
+        // {
+        //     server.send("Message " + to_string(i + 1));
+        // }
 
-        server.send("first message");
+        this_thread::sleep_for(std::chrono::seconds(2));
+        // server.send("last msg");
 
-        while (true);
-        // server.endTransmission();
+        server.close();
     }
     catch(const std::exception& e)
     {

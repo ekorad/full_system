@@ -15,6 +15,7 @@ using std::defer_lock;
 using std::mutex;
 using std::queue;
 using std::swap;
+using std::move;
 
 BasicServer::BasicServer()
     : DefaultLoggable(defaultLogFileName)
@@ -23,7 +24,7 @@ BasicServer::BasicServer()
 
     if (_fdServerSock == -1)
     {
-        const auto error = system_error(errno, system_category(), "Could not create server socket");
+        const system_error error{ errno, system_category(), "Could not create server socket" };
         logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
         throw error;
     }
@@ -39,7 +40,7 @@ BasicServer::BasicServer()
 
     if (setsockopt(_fdServerSock, level, optsName, &optsVal, sizeof(optsVal)) == -1)
     {
-        const auto error = system_error(errno, system_category(), "Could not set socket options");
+        const system_error error{ errno, system_category(), "Could not set socket options" };
         logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
         closeServerSocket();
         throw error;
@@ -70,7 +71,7 @@ void BasicServer::host(const unsigned port)
 
     if (bind(_fdServerSock, (struct sockaddr *)&addrServer, sizeof(addrServer)) == -1)
     {
-        const auto error = system_error(errno, system_category(), "Could not bind address to socket");
+        const system_error error{ errno, system_category(), "Could not bind address to socket" };
         logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
         closeServerSocket();
         throw error;
@@ -84,7 +85,7 @@ void BasicServer::host(const unsigned port)
     constexpr int maxNumClients = 1;
     if (listen(_fdServerSock, maxNumClients) == -1)
     {
-        const auto error = system_error(errno, system_category(), "Could not mark socket for listen");
+        const system_error error{ errno, system_category(), "Could not mark socket for listen" };
         logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
         closeServerSocket();
         throw error;
@@ -100,7 +101,7 @@ void BasicServer::host(const unsigned port)
     _fdClientSock = accept(_fdServerSock, reinterpret_cast<sockaddr*>(&_addrClient), &clientAddrLen);
     if (_fdClientSock == -1)
     {
-        const auto error = system_error(errno, system_category(), "Connection failed");
+        const system_error error{ errno, system_category(), "Connection failed" };
     }
 
     optional<string> ipAddrStrOpt = Utils::convertIPAddressToString(_addrClient.sin_addr);
@@ -108,9 +109,8 @@ void BasicServer::host(const unsigned port)
 
     if (!ipAddrStrOpt.has_value())
     {
-        logger().log("Could not convert client IP address "
-            + to_string(_addrClient.sin_addr.s_addr) + " to string",
-            GENERATE_CONTEXT(), LogLevel::WARNING);
+        logger().log("Could not convert client IP address " + to_string(_addrClient.sin_addr.s_addr)
+            + " to string", GENERATE_CONTEXT(), LogLevel::WARNING);
     }
     else
     {
@@ -127,9 +127,9 @@ void BasicServer::host(const unsigned port)
     }
     catch(const system_error& error)
     {
-        const string& errMsg = "Could not start sender thread";
-        const auto thrownError = system_error(error.code().value(), system_category(), errMsg);
-        logger().log(errMsg, GENERATE_CONTEXT(), LogLevel::ERROR);
+        const system_error thrownError{ error.code().value(), system_category(),
+            "Could not start sender thread" };
+        logger().log(thrownError.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
         disconnectClient();
         throw thrownError;
     }
@@ -162,6 +162,7 @@ void BasicServer::host(const unsigned port)
 
 void BasicServer::close()
 {
+    endComms();
     disconnect();
 
     if (closeServerSocket() == false)
@@ -178,36 +179,39 @@ void BasicServer::disconnectClient()
     }
 }
 
-void BasicServer::send(const string& message)
+void BasicServer::send(const ISerializable& message)
 {
     unique_lock<mutex> lock{ _mutex };
 
-    _msgQueue.push(message);
+    _msgQueue.push(move(DataTransferObject{ message.getRawData(), message.getRawDataSize() }));
 
     if (!_notified)
     {
         _notified = true;
-        logger().log("Notifying sender thread, current message batch size is: "
-            + to_string(_msgQueue.size()), GENERATE_CONTEXT(), LogLevel::DEBUG);
+        logger().log("Messages queued, scheduled thread wakeup notification", GENERATE_CONTEXT(),
+            LogLevel::DEBUG);
         lock.unlock();
         _condVar.notify_one();
     }
 }
 
-void BasicServer::endCommunication(const bool force)
+void BasicServer::endComms(const bool force)
 {
     if (force)
     {
         _forceEnd = true;
-        logger().log("Forcefully ending communications...", GENERATE_CONTEXT());
+        logger().log("Requesting forceful end of communications...", GENERATE_CONTEXT());
     }
     else
     {
         _forceEnd = false;
-        logger().log("Gracefully ending communications...", GENERATE_CONTEXT());
+        logger().log("Requesting graceful end of communications...", GENERATE_CONTEXT());
     }
 
     _endComms = true;
+    _condVar.notify_one();
+
+    _senderThread.join();
 }
 
 const string BasicServer::defaultLogFileName = "transmitter.log";
@@ -275,33 +279,60 @@ void BasicServer::senderThreadFunc()
         while (_condVar.wait_for(lock, std::chrono::milliseconds(100),
             [&]
             {
-                return _notified;
+                return _notified || _endComms;
             }) == false);
-        logger().log("Woken up, sending message batch...", GENERATE_CONTEXT(), LogLevel::DEBUG);
+        logger().log("Notified, resuming activity...", GENERATE_CONTEXT(), LogLevel::DEBUG);
 
-        if (_endComms && _forceEnd)
+        if (_endComms)
         {
-            logger().log("Communications ended forcefully", GENERATE_CONTEXT(),
+            if (_forceEnd)
+            {
+                logger().log("Communications ended forcefully", GENERATE_CONTEXT(),
                 LogLevel::DEBUG);
-            lock.unlock();
-            break;
+                lock.unlock();
+                break;
+            }
+            else
+            {
+                logger().log("Graceful communication shutdown requested", GENERATE_CONTEXT(), LogLevel::DEBUG);
+            }
         }
 
         _notified = false;
-        queue<string> sendQueue;
+        queue<DataTransferObject> sendQueue;
         swap(_msgQueue, sendQueue);
         lock.unlock();
         const auto batchSize = sendQueue.size();
         totalSent += batchSize;
 
-        while (!sendQueue.empty())
+        if (sendQueue.empty())
         {
-            std::cout << sendQueue.front() << std::endl;
-            sendQueue.pop();
+            logger().log("No message to send", GENERATE_CONTEXT(), LogLevel::DEBUG);
         }
-        logger().log("Sent message batch of size: " + to_string(batchSize)
-            + " (total sent = " + to_string(totalSent) + ")", GENERATE_CONTEXT(),
-            LogLevel::DEBUG);
+        else
+        {
+            while (!sendQueue.empty())
+            {
+                const auto& dto = sendQueue.front();
+                const void* const data = dto.getRawData();
+                const size_t dataSize = dto.getRawDataSize();
+
+                const double* const dblData = static_cast<const double* const>(data);
+                std::cout << dblData[0] << " " << dblData[1] << " " << dblData[2] << std::endl;
+
+                if (write(_fdClientSock, data, dataSize) != dataSize)
+                {
+                    const auto error = system_error(errno, system_category(), "Could not send message to client");
+                    logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
+                    throw error;
+                }
+                sendQueue.pop();
+            }
+
+            logger().log("Sent message batch of size: " + to_string(batchSize)
+                + " (total sent = " + to_string(totalSent) + ")", GENERATE_CONTEXT(),
+                LogLevel::DEBUG);
+        }
 
         if (_endComms)
         {
