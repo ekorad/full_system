@@ -14,6 +14,7 @@
 using std::ostream;
 using std::ofstream;
 using std::string;
+using std::to_string;
 using std::endl;
 using std::is_same;
 using std::atomic_bool;
@@ -122,31 +123,67 @@ template <typename T>
 void Logger<T>::setMinimumLogLevel(const LogLevel level) noexcept
 {
     _minLogLevel = static_cast<int>(level);
+    log("Set minimum log level to: " + to_string(static_cast<int>(level))
+        + "(" + logLevelToString(level) + ")", GENERATE_CONTEXT(),
+        LogLevel::DEBUG);
 }
 
 template <typename T>
 void Logger<T>::setPerformanceMode(const bool preferPerformance) noexcept
 {
-    _flushing = !preferPerformance;
-    _interleavingAllowed = !preferPerformance;
+    if (preferPerformance)
+    {
+        log("Performance preferred over quality", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    }
+    else
+    {
+        log("Quality preferred over performance", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    }
+
+    enableFlushing(!preferPerformance);
+    allowInterleaving(!preferPerformance);
 }
 
 template <typename T>
 void Logger<T>::enable(const bool enabled) noexcept
 {
     _enabled = enabled;
+    if (enabled)
+    {
+        log("Enabled logger", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    }
+    else
+    {
+        log("Disabled logger", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    }
 }
 
 template <typename T>
 void Logger<T>::enableFlushing(const bool enabled) noexcept
 {
     _flushing = enabled;
+    if (enabled)
+    {
+        log("Enabled message flushing", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    }
+    else
+    {
+        log("Disabled message flushing", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    }
 }
 
 template <typename T>
 void Logger<T>::allowInterleaving(const bool allow) noexcept
 {
     _interleavingAllowed = allow;
+    if (enabled)
+    {
+        log("Enabled interleaving", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    }
+    else
+    {
+        log("Disabled interleaving", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    }
 }
 
 template <typename T>

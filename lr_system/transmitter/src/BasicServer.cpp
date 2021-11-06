@@ -139,7 +139,7 @@ void BasicServer::host(const unsigned port)
     int threadStartElapsedMilis = 0;
     unique_lock<mutex> lock{ _mutex };
 
-    logger().log("Waiting for sender thread to confirm status...",
+    logger().log("Waiting for sender thread to confirm availability...",
         GENERATE_CONTEXT(), LogLevel::DEBUG);
     while (_condVar.wait_for(lock, std::chrono::milliseconds(threadStartElapsedMilis),
         [&]
@@ -157,12 +157,12 @@ void BasicServer::host(const unsigned port)
         }
     }
 
-    logger().log("Sender thread confirmed status", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    logger().log("Sender thread confirmed availability", GENERATE_CONTEXT(), LogLevel::DEBUG);
 }
 
 void BasicServer::close()
 {
-    endComms();
+    shutdownComms();
     disconnect();
 
     if (closeServerSocket() == false)
@@ -181,6 +181,8 @@ void BasicServer::disconnectClient()
 
 void BasicServer::send(const ISerializable& message)
 {
+    static size_t count = 0;
+    count++;
     unique_lock<mutex> lock{ _mutex };
 
     _msgQueue.push(move(DataTransferObject{ message.getRawData(), message.getRawDataSize() }));
@@ -188,27 +190,29 @@ void BasicServer::send(const ISerializable& message)
     if (!_notified)
     {
         _notified = true;
-        logger().log("Messages queued, scheduled thread wakeup notification", GENERATE_CONTEXT(),
-            LogLevel::DEBUG);
+        logger().log("Messages available, queued sender thread wakeup notification",
+            GENERATE_CONTEXT(), LogLevel::DEBUG);
         lock.unlock();
         _condVar.notify_one();
     }
 }
 
-void BasicServer::endComms(const bool force)
+void BasicServer::shutdownComms(const bool force)
 {
     if (force)
     {
-        _forceEnd = true;
-        logger().log("Requesting forceful end of communications...", GENERATE_CONTEXT());
+        _forceShutdown = true;
+        logger().log("Requested forceful communications shutdown, notifying sender thread...",
+            GENERATE_CONTEXT());
     }
     else
     {
-        _forceEnd = false;
-        logger().log("Requesting graceful end of communications...", GENERATE_CONTEXT());
+        _forceShutdown = false;
+        logger().log("Requested graceful communications shutdown, notifying sender thread...",
+            GENERATE_CONTEXT());
     }
 
-    _endComms = true;
+    _shutdownComms = true;
     _condVar.notify_one();
 
     _senderThread.join();
@@ -274,27 +278,28 @@ void BasicServer::senderThreadFunc()
 
     while (true)
     {
-        logger().log("Waiting for notification...", GENERATE_CONTEXT(), LogLevel::DEBUG);
+        logger().log("Waiting for wakeup notification...", GENERATE_CONTEXT(), LogLevel::DEBUG);
         unique_lock<mutex> lock{ _mutex };
         while (_condVar.wait_for(lock, std::chrono::milliseconds(100),
             [&]
             {
-                return _notified || _endComms;
+                return _notified || _shutdownComms;
             }) == false);
-        logger().log("Notified, resuming activity...", GENERATE_CONTEXT(), LogLevel::DEBUG);
+        logger().log("Notified (woken up), resuming activity...", GENERATE_CONTEXT(), LogLevel::DEBUG);
 
-        if (_endComms)
+        if (_shutdownComms)
         {
-            if (_forceEnd)
+            if (_forceShutdown)
             {
-                logger().log("Communications ended forcefully", GENERATE_CONTEXT(),
+                logger().log("Forcefully shutdown communications", GENERATE_CONTEXT(),
                 LogLevel::DEBUG);
                 lock.unlock();
                 break;
             }
             else
             {
-                logger().log("Graceful communication shutdown requested", GENERATE_CONTEXT(), LogLevel::DEBUG);
+                logger().log("Graceful communications shutdown in progress, flushing message queue...",
+                    GENERATE_CONTEXT(), LogLevel::DEBUG);
             }
         }
 
@@ -317,9 +322,6 @@ void BasicServer::senderThreadFunc()
                 const void* const data = dto.getRawData();
                 const size_t dataSize = dto.getRawDataSize();
 
-                const double* const dblData = static_cast<const double* const>(data);
-                std::cout << dblData[0] << " " << dblData[1] << " " << dblData[2] << std::endl;
-
                 if (write(_fdClientSock, data, dataSize) != dataSize)
                 {
                     const auto error = system_error(errno, system_category(), "Could not send message to client");
@@ -334,9 +336,9 @@ void BasicServer::senderThreadFunc()
                 LogLevel::DEBUG);
         }
 
-        if (_endComms)
+        if (_shutdownComms && (batchSize == 0))
         {
-            logger().log("Communications ended gracefully", GENERATE_CONTEXT(),
+            logger().log("Gracefully shutdown communications", GENERATE_CONTEXT(),
                 LogLevel::DEBUG);
             break;
         }

@@ -30,7 +30,7 @@ private:
 
     bool closeServerSocket();
     bool disconnect();
-    void endComms(const bool force = false);
+    void shutdownComms(const bool force = false);
 
     void senderThreadFunc();
 
@@ -43,8 +43,8 @@ private:
     std::condition_variable _condVar;
     std::queue<DataTransferObject> _msgQueue;
     bool _notified = false;
-    std::atomic_bool _endComms = false;
-    std::atomic_bool _forceEnd = false;
+    std::atomic_bool _shutdownComms = false;
+    std::atomic_bool _forceShutdown = false;
     std::atomic_bool _threadStarted = false;
 };
 
