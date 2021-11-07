@@ -13,6 +13,7 @@ public:
 
 private:
     bool closeSocket();
+    void receive();
 
     static constexpr int defaultPort = 1337;
     static const std::string defaultIpAddr;

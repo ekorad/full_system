@@ -62,6 +62,8 @@ void BasicClient::connect(const string& ipAddr, const int port)
     {
         logger().log("Connection to server established", GENERATE_CONTEXT());
     }
+
+    receive();
 }
 
 void BasicClient::close()
@@ -90,4 +92,16 @@ bool BasicClient::closeSocket()
     }
 
     return false;
+}
+
+#include <iostream>
+using namespace std;
+
+void BasicClient::receive()
+{
+    double dblBuf[3];
+    while (read(_fdSocket, dblBuf, sizeof(dblBuf)) > 0)
+    {
+        cout << dblBuf[0] << " " << dblBuf[1] << " " << dblBuf[2] << endl;
+    }
 }

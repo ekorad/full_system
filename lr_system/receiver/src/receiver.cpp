@@ -11,7 +11,7 @@ int main()
     {
         BasicClient client;
         client.connect();
-        while(true);
+        
     }
     catch(const std::exception& e)
     {

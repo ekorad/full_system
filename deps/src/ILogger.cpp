@@ -44,3 +44,8 @@ void ILogger::allLoggersSetMinimumLogLevel(const LogLevel level)
         }
     }
 }
+
+size_t ILogger::getRegisteredLoggers() noexcept
+{
+    return loggers.size();
+}

@@ -21,6 +21,7 @@ public:
 
     static void enableAllLoggers(const bool enabled = true);
     static void allLoggersSetMinimumLogLevel(const LogLevel level);
+    static std::size_t getRegisteredLoggers() noexcept;
 
 private:
     static std::vector<ILogger*> loggers;

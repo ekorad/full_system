@@ -298,7 +298,7 @@ void BasicServer::senderThreadFunc()
             }
             else
             {
-                logger().log("Graceful communications shutdown in progress, flushing message queue...",
+                logger().log("Graceful communications shutdown in progress",
                     GENERATE_CONTEXT(), LogLevel::DEBUG);
             }
         }
@@ -316,18 +316,34 @@ void BasicServer::senderThreadFunc()
         }
         else
         {
+            logger().log("Flushing message queue...", GENERATE_CONTEXT(), LogLevel::DEBUG);
             while (!sendQueue.empty())
             {
                 const auto& dto = sendQueue.front();
                 const void* const data = dto.getRawData();
                 const size_t dataSize = dto.getRawDataSize();
 
-                if (write(_fdClientSock, data, dataSize) != dataSize)
+                ssize_t retVal = 0;
+                ssize_t sentDataSize = 0;
+
+                while (true)
                 {
-                    const auto error = system_error(errno, system_category(), "Could not send message to client");
-                    logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
-                    throw error;
+                    retVal = write(_fdClientSock, data, dataSize);
+
+                    if (retVal == -1)
+                    {
+                        const auto error = system_error(errno, system_category(), "Could not send message to client");
+                        logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
+                        throw error;
+                    }
+
+                    sentDataSize += retVal;
+                    if (sentDataSize == dataSize)
+                    {
+                        break;
+                    }
                 }
+
                 sendQueue.pop();
             }
 
