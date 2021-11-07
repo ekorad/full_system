@@ -11,8 +11,6 @@ int main(int argc, char* argv[])
 {
     size_t numSamples = 5000000;
     unsigned port = 1337;
-    ofstream logOut{ "transmitter_main.log" };
-    Logger<NonContext_t> logger{ logOut };
 
     if (argc > 1)
     {
@@ -29,12 +27,17 @@ int main(int argc, char* argv[])
         }
     }
 
+    Logger::setLogFileName(std::string{ argv[0] } + ".log");
+    Logger::init();
+
+    Logger mainLogger{ "(MainThread)" };
+
     setMaxSamples(numSamples);
-    logger.log("Set model sample count to: " + to_string(numSamples), GENERATE_CONTEXT(),
+    mainLogger.log("Set model sample count to: " + to_string(numSamples), GENERATE_CONTEXT(),
         LogLevel::DEBUG);
 
     system_transmitter_initialize();
-    logger.log("Initialized system model", GENERATE_CONTEXT(), LogLevel::INFO);
+    mainLogger.log("Initialized system model", GENERATE_CONTEXT(), LogLevel::INFO);
 
     try
     {
@@ -42,7 +45,7 @@ int main(int argc, char* argv[])
 
         server.host(port);
 
-        logger.log("Connection up and running, processing and sending samples...",
+        mainLogger.log("Connection up and running, processing and sending samples...",
             GENERATE_CONTEXT(), LogLevel::INFO);
 
         while ((rtmGetErrorStatus(system_transmitter_M) == (NULL)) &&
@@ -51,7 +54,7 @@ int main(int argc, char* argv[])
             server.send(msg);
         }
 
-        logger.log("Processing and sending over, requesting graceful shutdown...", GENERATE_CONTEXT(),
+        mainLogger.log("Processing and sending over, requesting graceful shutdown...", GENERATE_CONTEXT(),
             LogLevel::INFO);
 
         server.close();
@@ -62,7 +65,7 @@ int main(int argc, char* argv[])
     }
 
     system_transmitter_terminate();
-    logger.log("Shutdown system model", GENERATE_CONTEXT(), LogLevel::INFO);
+    mainLogger.log("Shutdown system model", GENERATE_CONTEXT(), LogLevel::INFO);
 
     return 0;
 }

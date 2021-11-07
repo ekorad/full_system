@@ -5,13 +5,15 @@
 
 using namespace std;
 
-int main()
+int main(int argc, char* argv[])
 {
+    Logger::setLogFileName(std::string{ argv[0] } + ".log");
+    Logger::init();
+
     try
     {
         BasicClient client;
         client.connect();
-        
     }
     catch(const std::exception& e)
     {

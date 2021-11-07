@@ -1,4 +1,5 @@
 #include "BasicServer.h"
+#include "Utils.h"
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -16,21 +17,22 @@ using std::mutex;
 using std::queue;
 using std::swap;
 using std::move;
+using std::optional;
+using std::string;
 
 BasicServer::BasicServer()
-    : DefaultLoggable(defaultLogFileName)
 {
     _fdServerSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
     if (_fdServerSock == -1)
     {
         const system_error error{ errno, system_category(), "Could not create server socket" };
-        logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
+        _logger.log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
         throw error;
     }
     else
     {
-        logger().log("Initialized server socket with descriptor: " + to_string(_fdServerSock),
+        _logger.log("Initialized server socket with descriptor: " + to_string(_fdServerSock),
             GENERATE_CONTEXT(), LogLevel::DEBUG);
     }
 
@@ -41,16 +43,16 @@ BasicServer::BasicServer()
     if (setsockopt(_fdServerSock, level, optsName, &optsVal, sizeof(optsVal)) == -1)
     {
         const system_error error{ errno, system_category(), "Could not set socket options" };
-        logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
+        _logger.log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
         closeServerSocket();
         throw error;
     }
     else
     {
-        logger().log("Successfully set socket options", GENERATE_CONTEXT(), LogLevel::DEBUG);
+        _logger.log("Successfully set socket options", GENERATE_CONTEXT(), LogLevel::DEBUG);
     }
 
-    logger().log("Server initialization successful", GENERATE_CONTEXT());
+    _logger.log("Server initialization successful", GENERATE_CONTEXT());
 }
 
 BasicServer::~BasicServer()
@@ -58,7 +60,7 @@ BasicServer::~BasicServer()
     disconnect();
     closeServerSocket();
 
-    logger().log("Server terminated", GENERATE_CONTEXT());
+    _logger.log("Server terminated", GENERATE_CONTEXT());
 }
 
 void BasicServer::host(const unsigned port)
@@ -72,13 +74,13 @@ void BasicServer::host(const unsigned port)
     if (bind(_fdServerSock, (struct sockaddr *)&addrServer, sizeof(addrServer)) == -1)
     {
         const system_error error{ errno, system_category(), "Could not bind address to socket" };
-        logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
+        _logger.log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
         closeServerSocket();
         throw error;
     }
     else
     {
-        logger().log("Bound address to socket (port: " + to_string(port) + ")",
+        _logger.log("Bound address to socket (port: " + to_string(port) + ")",
             GENERATE_CONTEXT(), LogLevel::DEBUG);
     }
 
@@ -86,18 +88,18 @@ void BasicServer::host(const unsigned port)
     if (listen(_fdServerSock, maxNumClients) == -1)
     {
         const system_error error{ errno, system_category(), "Could not mark socket for listen" };
-        logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
+        _logger.log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
         closeServerSocket();
         throw error;
     }
     else
     {
-        logger().log("Marked server socket for listen", GENERATE_CONTEXT(), LogLevel::DEBUG);
+        _logger.log("Marked server socket for listen", GENERATE_CONTEXT(), LogLevel::DEBUG);
     }
 
     socklen_t clientAddrLen = sizeof(sockaddr_in);
 
-    logger().log("Awaiting connection from client...", GENERATE_CONTEXT());
+    _logger.log("Awaiting connection from client...", GENERATE_CONTEXT());
     _fdClientSock = accept(_fdServerSock, reinterpret_cast<sockaddr*>(&_addrClient), &clientAddrLen);
     if (_fdClientSock == -1)
     {
@@ -109,7 +111,7 @@ void BasicServer::host(const unsigned port)
 
     if (!ipAddrStrOpt.has_value())
     {
-        logger().log("Could not convert client IP address " + to_string(_addrClient.sin_addr.s_addr)
+        _logger.log("Could not convert client IP address " + to_string(_addrClient.sin_addr.s_addr)
             + " to string", GENERATE_CONTEXT(), LogLevel::WARNING);
     }
     else
@@ -117,7 +119,7 @@ void BasicServer::host(const unsigned port)
         ipAddrStr = ipAddrStrOpt.value();
     }
 
-    logger().log("Client with IP address " + ipAddrStr + " connected successfully "
+    _logger.log("Client with IP address " + ipAddrStr + " connected successfully "
         "(descriptor = " + to_string(_fdClientSock) + ")",
         GENERATE_CONTEXT());
 
@@ -129,7 +131,7 @@ void BasicServer::host(const unsigned port)
     {
         const system_error thrownError{ error.code().value(), system_category(),
             "Could not start sender thread" };
-        logger().log(thrownError.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
+        _logger.log(thrownError.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
         disconnectClient();
         throw thrownError;
     }
@@ -139,7 +141,7 @@ void BasicServer::host(const unsigned port)
     int threadStartElapsedMilis = 0;
     unique_lock<mutex> lock{ _mutex };
 
-    logger().log("Waiting for sender thread to confirm availability...",
+    _logger.log("Waiting for sender thread to confirm availability...",
         GENERATE_CONTEXT(), LogLevel::DEBUG);
     while (_condVar.wait_for(lock, std::chrono::milliseconds(threadStartElapsedMilis),
         [&]
@@ -151,13 +153,13 @@ void BasicServer::host(const unsigned port)
         if (threadStartElapsedMilis == threadStartMillisTmo)
         {
             const auto error = runtime_error("Could not start sender thread in time");
-            logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
+            _logger.log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
             disconnectClient();
             throw error;
         }
     }
 
-    logger().log("Sender thread confirmed availability", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    _logger.log("Sender thread confirmed availability", GENERATE_CONTEXT(), LogLevel::DEBUG);
 }
 
 void BasicServer::close()
@@ -167,7 +169,7 @@ void BasicServer::close()
 
     if (closeServerSocket() == false)
     {
-        logger().log("Server already clossed", GENERATE_CONTEXT());
+        _logger.log("Server already clossed", GENERATE_CONTEXT());
     }
 }
 
@@ -175,7 +177,7 @@ void BasicServer::disconnectClient()
 {
     if (disconnect() == false)
     {
-        logger().log("No client connected", GENERATE_CONTEXT());
+        _logger.log("No client connected", GENERATE_CONTEXT());
     }
 }
 
@@ -190,7 +192,7 @@ void BasicServer::send(const ISerializable& message)
     if (!_notified)
     {
         _notified = true;
-        logger().log("Messages available, queued sender thread wakeup notification",
+        _logger.log("Messages available, queued sender thread wakeup notification",
             GENERATE_CONTEXT(), LogLevel::DEBUG);
         lock.unlock();
         _condVar.notify_one();
@@ -202,13 +204,13 @@ void BasicServer::shutdownComms(const bool force)
     if (force)
     {
         _forceShutdown = true;
-        logger().log("Requested forceful communications shutdown, notifying sender thread...",
+        _logger.log("Requested forceful communications shutdown, notifying sender thread...",
             GENERATE_CONTEXT());
     }
     else
     {
         _forceShutdown = false;
-        logger().log("Requested graceful communications shutdown, notifying sender thread...",
+        _logger.log("Requested graceful communications shutdown, notifying sender thread...",
             GENERATE_CONTEXT());
     }
 
@@ -228,7 +230,7 @@ bool BasicServer::closeServerSocket()
         ::close(_fdServerSock);
         _fdServerSock = -1;
 
-        logger().log("Closed server socket (descriptor = " + to_string(fd) + ")",
+        _logger.log("Closed server socket (descriptor = " + to_string(fd) + ")",
             GENERATE_CONTEXT());
 
         return true;
@@ -246,7 +248,7 @@ bool BasicServer::disconnect()
 
         if (!ipAddrStrOpt.has_value())
         {
-            logger().log("Could not convert client IP address "
+            _logger.log("Could not convert client IP address "
                 + to_string(_addrClient.sin_addr.s_addr) + " to string",
                 GENERATE_CONTEXT(), LogLevel::WARNING);
         }
@@ -259,7 +261,7 @@ bool BasicServer::disconnect()
         _fdClientSock = -1;
         _addrClient = {};
 
-        logger().log("Disconnected client with IP address " + ipAddrStr,
+        _logger.log("Disconnected client with IP address " + ipAddrStr,
             GENERATE_CONTEXT());
 
         return true;
@@ -272,33 +274,33 @@ void BasicServer::senderThreadFunc()
 {
     static size_t totalSent = 0;
 
-    logger().log("Sender thread started", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    _logger.log("Sender thread started", GENERATE_CONTEXT(), LogLevel::DEBUG);
     _threadStarted = true;
     _condVar.notify_one();
 
     while (true)
     {
-        logger().log("Waiting for wakeup notification...", GENERATE_CONTEXT(), LogLevel::DEBUG);
+        _logger.log("Waiting for wakeup notification...", GENERATE_CONTEXT(), LogLevel::DEBUG);
         unique_lock<mutex> lock{ _mutex };
         while (_condVar.wait_for(lock, std::chrono::milliseconds(100),
             [&]
             {
                 return _notified || _shutdownComms;
             }) == false);
-        logger().log("Notified (woken up), resuming activity...", GENERATE_CONTEXT(), LogLevel::DEBUG);
+        _logger.log("Notified (woken up), resuming activity...", GENERATE_CONTEXT(), LogLevel::DEBUG);
 
         if (_shutdownComms)
         {
             if (_forceShutdown)
             {
-                logger().log("Forcefully shutdown communications", GENERATE_CONTEXT(),
+                _logger.log("Forcefully shutdown communications", GENERATE_CONTEXT(),
                 LogLevel::DEBUG);
                 lock.unlock();
                 break;
             }
             else
             {
-                logger().log("Graceful communications shutdown in progress",
+                _logger.log("Graceful communications shutdown in progress",
                     GENERATE_CONTEXT(), LogLevel::DEBUG);
             }
         }
@@ -312,11 +314,11 @@ void BasicServer::senderThreadFunc()
 
         if (sendQueue.empty())
         {
-            logger().log("No message to send", GENERATE_CONTEXT(), LogLevel::DEBUG);
+            _logger.log("No message to send", GENERATE_CONTEXT(), LogLevel::DEBUG);
         }
         else
         {
-            logger().log("Flushing message queue...", GENERATE_CONTEXT(), LogLevel::DEBUG);
+            _logger.log("Flushing message queue...", GENERATE_CONTEXT(), LogLevel::DEBUG);
             while (!sendQueue.empty())
             {
                 const auto& dto = sendQueue.front();
@@ -333,7 +335,7 @@ void BasicServer::senderThreadFunc()
                     if (retVal == -1)
                     {
                         const auto error = system_error(errno, system_category(), "Could not send message to client");
-                        logger().log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
+                        _logger.log(error.what(), GENERATE_CONTEXT(), LogLevel::ERROR);
                         throw error;
                     }
 
@@ -347,18 +349,18 @@ void BasicServer::senderThreadFunc()
                 sendQueue.pop();
             }
 
-            logger().log("Sent message batch of size: " + to_string(batchSize)
+            _logger.log("Sent message batch of size: " + to_string(batchSize)
                 + " (total sent = " + to_string(totalSent) + ")", GENERATE_CONTEXT(),
                 LogLevel::DEBUG);
         }
 
         if (_shutdownComms && (batchSize == 0))
         {
-            logger().log("Gracefully shutdown communications", GENERATE_CONTEXT(),
+            _logger.log("Gracefully shutdown communications", GENERATE_CONTEXT(),
                 LogLevel::DEBUG);
             break;
         }
     }
 
-    logger().log("Sender thread stopped", GENERATE_CONTEXT(), LogLevel::DEBUG);
+    _logger.log("Sender thread stopped", GENERATE_CONTEXT(), LogLevel::DEBUG);
 }

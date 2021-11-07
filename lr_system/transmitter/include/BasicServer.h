@@ -1,8 +1,8 @@
 #ifndef BASIC_SERVER_H
 #define BASIC_SERVER_H
 
-#include "DefaultLoggable.h"
 #include "DataTransferObject.h"
+#include "Logger.h"
 #include <fstream>
 #include <queue>
 #include <thread>
@@ -12,7 +12,7 @@
 #include <memory>
 #include <netinet/in.h>
 
-class BasicServer : public DefaultLoggable<BasicServer>
+class BasicServer
 {
 public:
     BasicServer();
@@ -33,6 +33,8 @@ private:
     void shutdownComms(const bool force = false);
 
     void senderThreadFunc();
+
+    Logger _logger{ "BasicServer" };
 
     sockaddr_in _addrClient;
     int _fdServerSock = -1;

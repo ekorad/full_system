@@ -1,218 +1,63 @@
+#ifndef LOGGER_H
+#define LOGGER_H
+
 #include "ContextLogMessage.h"
-#include "Utils.h"
-#include "ILogger.h"
-#include <ostream>
-#include <fstream>
-#include <string>
+#include <optional>
+#include <condition_variable>
+#include <mutex>
 #include <atomic>
-#include <typeinfo>
-#include <iostream>
+#include <thread>
+#include <queue>
+#include <vector>
 #include <memory>
-#include <cxxabi.h>
-#include <stdlib.h>
+#include <fstream>
 
-using std::ostream;
-using std::ofstream;
-using std::string;
-using std::to_string;
-using std::endl;
-using std::is_same;
-using std::atomic_bool;
-using std::atomic_int;
-using std::mutex;
-using std::lock_guard;
-using std::cerr;
-using std::vector;
-using std::optional;
-using std::nullopt;
-using std::make_unique;
-
-struct NonContext_t final {};
-
-template <typename T>
-class Logger : public ILogger
+class Logger
 {
 public:
-    Logger(ostream& outputStream, const bool enabled = true);
+	Logger(const std::optional<std::string> target = std::nullopt,
+		const bool enabled = true);
+	virtual ~Logger();
 
-    void log(const string& logMessage,
-        const optional<LogContext> logContext = nullopt,
-        const LogLevel level = LogLevel::INFO) override;
+    static void init();
+	static void enableAllLoggers(const bool enabled = true);
+	static void setMinimumLogLevelAll(const LogLevel level);
+    static void setLogFileName(const std::string& fileName);
+    static std::string getLogFileName() noexcept;
 
-    void setMinimumLogLevel(const LogLevel level) noexcept override;
-    void setPerformanceMode(const bool preferPerformance = true) noexcept;
-    void allowInterleaving(const bool allow = true) noexcept;
-    void enableFlushing(const bool enabled = true) noexcept;
-    void enable(const bool enabled = true) noexcept override;
+	std::optional<std::string> getTargetName() const noexcept;
 
-    LogLevel getMinimumLogLevel() const noexcept;
-    bool performancePreferred() const noexcept;
-    bool interleavingAllowed() const noexcept;
-    bool flushingEnabled() const noexcept;
-    bool enabled() const noexcept;
+	bool enabled() const noexcept;
+	void enable(const bool enabled = true) noexcept;
+	LogLevel getMinimumLogLevel() const noexcept;
+	void setMinimumLogLevel(const LogLevel level);
+	void enableFlushing(const bool enabled = true) noexcept;
+	bool flushingEnabled() const noexcept;
+
+	void log(const std::string& logMessage,
+		const std::optional<LogContext> logContext = std::nullopt,
+		const LogLevel level = LogLevel::INFO) const;
 
 private:
-    mutable mutex _interleaveMutex;
+	static void loggerThreadFunc();
 
-    ostream& _os;
+	static const std::string clsName;
 
-    atomic_bool _enabled;
-    atomic_bool _flushing = true;
-    atomic_bool _interleavingAllowed = false;
-    atomic_int _minLogLevel = static_cast<int>(LogLevel::DEBUG);
+    static std::string logFileName;
+	static std::ofstream logOut;
+	static std::condition_variable staticCondVar;
+	static std::mutex staticMutex;
+	static std::optional<std::thread> loggerThread;
+	static std::queue<std::unique_ptr<BasicMessage>> logQueue;
+	static std::vector<Logger*> registeredLoggers;
+	static std::atomic_bool loggerThreadNotified;
+	static std::mutex flushMutex;
+	static std::atomic_bool alwaysFlush;
+	static bool loggerThreadShutdown;
+
+	const std::optional<std::string> _target;
+	std::atomic_bool _enabled;
+	std::atomic_int _minLogLevel = static_cast<int>(LogLevel::DEBUG);
 };
 
-template <typename T>
-Logger<T>::Logger(ostream& outputStream, const bool enabled)
-    : _os{ outputStream }, _enabled{ enabled }
-{
-    log("Registered logger", GENERATE_CONTEXT());
-}
-
-template <typename T>
-void Logger<T>::log(const string& logMessage,
-    const optional<LogContext> logContext, const LogLevel level)
-{
-    if (!_enabled)
-    {
-        return;
-    }
-
-    if (static_cast<int>(level) < _minLogLevel)
-    {
-        return;
-    }
-
-    optional<LogContext> newContextOpt = logContext;
-
-    if (newContextOpt.has_value()
-        && (is_same<T, NonContext_t>::value == false)
-        && (!newContextOpt.value().getClassName().has_value()))
-    {
-        const string mangledName = typeid(T).name();
-        optional<string> demangledNameOpt = Utils::demangleTypeName(mangledName);
-
-        if (demangledNameOpt.has_value())
-        {
-            newContextOpt.value().setClassName(demangledNameOpt.value());
-        }
-        else
-        {
-            log("Could not demangle \"" + mangledName + "\"", nullopt,
-                LogLevel::WARNING);
-        }
-    }
-
-    const auto logPtr = (newContextOpt.has_value()
-        ? make_unique<ContextLogMessage>(ContextLogMessage{ logMessage, newContextOpt.value(), level })
-        : make_unique<BasicLogMessage>(BasicLogMessage{ logMessage, level }));
-
-    if (!_interleavingAllowed && _flushing)
-    {
-        lock_guard<mutex> lock{ _interleaveMutex };
-        _os << static_cast<string>(*logPtr.get()) << endl;
-    }
-    else
-    {
-        string buffer = static_cast<string>(*logPtr.get()) + "\n";
-        _os << buffer;
-    }
-}
-
-template <typename T>
-void Logger<T>::setMinimumLogLevel(const LogLevel level) noexcept
-{
-    _minLogLevel = static_cast<int>(level);
-    log("Set minimum log level to: " + to_string(static_cast<int>(level))
-        + "(" + logLevelToString(level) + ")", GENERATE_CONTEXT(),
-        LogLevel::DEBUG);
-}
-
-template <typename T>
-void Logger<T>::setPerformanceMode(const bool preferPerformance) noexcept
-{
-    if (preferPerformance)
-    {
-        log("Performance preferred over quality", GENERATE_CONTEXT(), LogLevel::DEBUG);
-    }
-    else
-    {
-        log("Quality preferred over performance", GENERATE_CONTEXT(), LogLevel::DEBUG);
-    }
-
-    enableFlushing(!preferPerformance);
-    allowInterleaving(!preferPerformance);
-}
-
-template <typename T>
-void Logger<T>::enable(const bool enabled) noexcept
-{
-    _enabled = enabled;
-    if (enabled)
-    {
-        log("Enabled logger", GENERATE_CONTEXT(), LogLevel::DEBUG);
-    }
-    else
-    {
-        log("Disabled logger", GENERATE_CONTEXT(), LogLevel::DEBUG);
-    }
-}
-
-template <typename T>
-void Logger<T>::enableFlushing(const bool enabled) noexcept
-{
-    _flushing = enabled;
-    if (enabled)
-    {
-        log("Enabled message flushing", GENERATE_CONTEXT(), LogLevel::DEBUG);
-    }
-    else
-    {
-        log("Disabled message flushing", GENERATE_CONTEXT(), LogLevel::DEBUG);
-    }
-}
-
-template <typename T>
-void Logger<T>::allowInterleaving(const bool allow) noexcept
-{
-    _interleavingAllowed = allow;
-    if (enabled)
-    {
-        log("Enabled interleaving", GENERATE_CONTEXT(), LogLevel::DEBUG);
-    }
-    else
-    {
-        log("Disabled interleaving", GENERATE_CONTEXT(), LogLevel::DEBUG);
-    }
-}
-
-template <typename T>
-LogLevel Logger<T>::getMinimumLogLevel() const noexcept
-{
-    int level = static_cast<int>(_minLogLevel);
-    return static_cast<LogLevel>(level);
-}
-
-template <typename T>
-bool Logger<T>::performancePreferred() const noexcept
-{
-    return (!_flushing && !_interleavingAllowed);
-}
-
-template <typename T>
-bool Logger<T>::enabled() const noexcept
-{
-    return _enabled;
-}
-
-template <typename T>
-bool Logger<T>::flushingEnabled() const noexcept
-{
-    return _flushing;
-}
-
-template <typename T>
-bool Logger<T>::interleavingAllowed() const noexcept
-{
-    return _interleavingAllowed;
-}
+#endif

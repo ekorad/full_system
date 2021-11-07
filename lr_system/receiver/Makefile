@@ -18,6 +18,7 @@ INC_FLAGS := -I$(INC_DIR) -I$(DEPS_INC_DIR)
 CXX_VER_FLAG := -std=c++17
 
 CXXFLAGS := $(CXX_VER_FLAG) $(INC_FLAGS)
+CXXFLAGS += -pthread
 
 .PHONY: all clean
 

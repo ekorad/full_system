@@ -1,7 +1,7 @@
-#include "DefaultLoggable.h"
+#include "Logger.h"
 #include <string>
 
-class BasicClient : public DefaultLoggable<BasicClient>
+class BasicClient
 {
 public:
     BasicClient();
@@ -19,5 +19,6 @@ private:
     static const std::string defaultIpAddr;
     static const std::string defaultLogFileName;
 
+    Logger _logger{ "BasicClient" };
     unsigned _fdSocket = -1;
 };
